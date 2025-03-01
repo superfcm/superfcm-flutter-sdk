@@ -134,17 +134,15 @@ class SuperFCM {
 
     logger.setLevel(config.logLevel);
 
-    await Future.wait([
-      RequestManager.instance.initialize(config),
-      CacheManager.instance.initialize(config),
-      FirebaseMessagingService.instance.initialize(
-        onForeground: _handleForegroundMessage,
-        onOpened: _handleMessageOpenedApp,
-        onBackground: onBackground ?? _superFCMBackgroundHandler,
-        onTokenRefresh:
-            config.shouldMonitorTokenChange ? _handleTokenChange : null,
-      ),
-    ]);
+    await CacheManager.instance.initialize(config);
+    await RequestManager.instance.initialize(config);
+    await FirebaseMessagingService.instance.initialize(
+      onForeground: _handleForegroundMessage,
+      onOpened: _handleMessageOpenedApp,
+      onBackground: onBackground ?? _superFCMBackgroundHandler,
+      onTokenRefresh:
+          config.shouldMonitorTokenChange ? _handleTokenChange : null,
+    );
 
     initialized = true;
 
