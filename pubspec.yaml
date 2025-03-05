@@ -1,6 +1,6 @@
 name: superfcm_flutter
 description: SuperFCM is the missing frontend to Firebase Cloud Messaging. This package wraps the Firebase Messaging SDK and allows you to integrate with the SuperFCM platform.
-version: 0.0.2
+version: 0.0.3
 homepage: https://superfcm.com
 repository: https://github.com/superfcm/superfcm-flutter-sdk
 topics:
