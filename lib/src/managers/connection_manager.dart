@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
-import 'package:internet_connection_checker/internet_connection_checker.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:superfcm_flutter/src/utils/logger.dart';
 
 /// A singleton class that manages and monitors internet connectivity status.
@@ -29,8 +29,9 @@ class ConnectionManager with WidgetsBindingObserver {
 
   ConnectionManager._internal() {
     WidgetsBinding.instance.addObserver(this);
-    _isConnected = InternetConnectionChecker.instance.onStatusChange
-        .map((c) => c == InternetConnectionStatus.connected)
+    _isConnected = InternetConnection()
+        .onStatusChange
+        .map((c) => c == InternetStatus.connected)
         .listen((isConnected) async {
       if (isConnected) {
         logger.d('Device is online');
@@ -120,7 +121,7 @@ class ConnectionManager with WidgetsBindingObserver {
 
   /// Check if the device currently has internet connectivity
   Future<bool> hasConnection() async {
-    return InternetConnectionChecker.instance.hasConnection;
+    return InternetConnection().hasInternetAccess;
   }
 
   Future<void> dispose() async {
