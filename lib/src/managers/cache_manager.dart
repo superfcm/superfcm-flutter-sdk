@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:superfcm_flutter/src/utils/constants.dart';
 import 'package:superfcm_flutter/src/utils/logger.dart';
+import 'package:superfcm_flutter/src/utils/operation_tracker.dart';
 import 'package:superfcm_flutter/src/utils/string_utils.dart';
 import 'package:superfcm_flutter/superfcm_config.dart';
 
@@ -17,6 +18,10 @@ class CacheManager {
   SuperFCMConfig? _config;
   Database? _database;
   bool initialized = false;
+
+  /// Operation tracker for managing async operations
+  final OperationTracker _operationTracker =
+      OperationTracker(tag: 'CacheManager');
 
   /// Factory constructor that returns the singleton instance
   factory CacheManager() {
@@ -88,6 +93,15 @@ class CacheManager {
 
   /// Closes the database connection and cleans up resources.
   Future<void> dispose() async {
+    // If there are pending operations, wait for them to complete
+    if (_operationTracker.hasOperations) {
+      logger
+          .d('Waiting for pending operations to complete before disposing...');
+
+      // Wait for operations to complete with a timeout
+      await _operationTracker.waitForOperations();
+    }
+
     if (_database != null && _database!.isOpen) {
       await _database!.close();
     }
@@ -105,19 +119,21 @@ class CacheManager {
     String type,
     Map<String, dynamic> data,
   ) async {
-    logger.v('Adding to $type cache: $data');
+    return _operationTracker.trackOperation(() async {
+      logger.v('Adding to $type cache: $data');
 
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final itemWithTimestamp = {
-      ...data,
-      'timestamp': timestamp,
-    };
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final itemWithTimestamp = {
+        ...data,
+        'timestamp': timestamp,
+      };
 
-    await database.insert(type, itemWithTimestamp).then((result) {
-      logger.v('Item successfully cached');
-    }).catchError((e) {
-      logger.e('Failed to add to $type cache');
-      throw e;
+      await database.insert(type, itemWithTimestamp).then((result) {
+        logger.v('Item successfully cached');
+      }).catchError((e) {
+        logger.e('Failed to add to $type cache');
+        throw e;
+      });
     });
   }
 
@@ -128,12 +144,14 @@ class CacheManager {
   ///
   /// Throws an exception if the operation fails or if the database is not initialized.
   Future<void> removeItem(String type, int id) async {
-    logger.v('Removing $type with ID: $id');
-    await database.delete(type, where: 'id = ?', whereArgs: [id]).then((_) {
-      logger.v('${type.ucfirst()} removed successfully');
-    }).catchError((e) {
-      logger.e('Failed to remove $type');
-      throw e;
+    return _operationTracker.trackOperation(() async {
+      logger.v('Removing $type with ID: $id');
+      await database.delete(type, where: 'id = ?', whereArgs: [id]).then((_) {
+        logger.v('${type.ucfirst()} removed successfully');
+      }).catchError((e) {
+        logger.e('Failed to remove $type');
+        throw e;
+      });
     });
   }
 
@@ -147,46 +165,48 @@ class CacheManager {
   ///
   /// Throws an exception if the operation fails or if the database is not initialized.
   Future<List<Map<String, dynamic>>> getItems(String type) async {
-    logger.v('Fetching pending $type');
-    final items = await database
-        .query(
-          type,
-          orderBy: 'timestamp ASC',
-        )
-        .then((result) => result)
-        .catchError((e) {
-      logger.e('Failed to fetch pending $type');
-      throw e;
+    return _operationTracker.trackOperation(() async {
+      logger.v('Fetching pending $type');
+      final items = await database
+          .query(
+            type,
+            orderBy: 'timestamp ASC',
+          )
+          .then((result) => result)
+          .catchError((e) {
+        logger.e('Failed to fetch pending $type');
+        throw e;
+      });
+
+      final maxCacheDuration = _config?.maxCacheDuration;
+      if (maxCacheDuration != null) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+        final validItems = items.where((request) {
+          final timestamp = request['timestamp'] as int;
+          final age = Duration(milliseconds: now - timestamp);
+          return age <= maxCacheDuration;
+        }).toList();
+
+        final expiredItems = items.where((item) {
+          final timestamp = item['timestamp'] as int;
+          final age = Duration(milliseconds: now - timestamp);
+          return age > maxCacheDuration;
+        }).toList();
+
+        for (var item in expiredItems) {
+          await removeItem(type, item['id'] as int);
+        }
+
+        if (expiredItems.isNotEmpty) {
+          logger.d('Removed ${expiredItems.length} expired $type');
+        }
+
+        logger.v('Found ${validItems.length} valid pending $type');
+        return validItems;
+      }
+
+      logger.v('Found ${items.length} pending $type');
+      return items;
     });
-
-    final maxCacheDuration = _config?.maxCacheDuration;
-    if (maxCacheDuration != null) {
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final validItems = items.where((request) {
-        final timestamp = request['timestamp'] as int;
-        final age = Duration(milliseconds: now - timestamp);
-        return age <= maxCacheDuration;
-      }).toList();
-
-      final expiredItems = items.where((item) {
-        final timestamp = item['timestamp'] as int;
-        final age = Duration(milliseconds: now - timestamp);
-        return age > maxCacheDuration;
-      }).toList();
-
-      for (var item in expiredItems) {
-        await removeItem(type, item['id'] as int);
-      }
-
-      if (expiredItems.isNotEmpty) {
-        logger.d('Removed ${expiredItems.length} expired $type');
-      }
-
-      logger.v('Found ${validItems.length} valid pending $type');
-      return validItems;
-    }
-
-    logger.v('Found ${items.length} pending $type');
-    return items;
   }
 }

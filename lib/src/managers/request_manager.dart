@@ -10,6 +10,7 @@ import 'package:superfcm_flutter/src/models/api_response.dart';
 import 'package:superfcm_flutter/src/utils/constants.dart';
 import 'package:superfcm_flutter/src/utils/http_status.dart';
 import 'package:superfcm_flutter/src/utils/logger.dart';
+import 'package:superfcm_flutter/src/utils/operation_tracker.dart';
 import 'package:superfcm_flutter/src/utils/request_types.dart';
 import 'package:superfcm_flutter/superfcm_config.dart';
 
@@ -30,6 +31,10 @@ class RequestManager {
 
   /// Timer for periodic flushing of cached requests
   Timer? _flushTimer;
+
+  /// Operation tracker for managing async operations
+  final OperationTracker _operationTracker =
+      OperationTracker(tag: 'RequestManager');
 
   /// Internal constructor for the singleton pattern.
   RequestManager._internal();
@@ -104,38 +109,41 @@ class RequestManager {
   }
 
   Future<bool> _retryCachedRequests() async {
-    final List<Map<String, dynamic>> cachedRequests =
-        await CacheManager.instance.getItems('requests');
+    return _operationTracker.trackOperation(() async {
+      final List<Map<String, dynamic>> cachedRequests =
+          await CacheManager.instance.getItems('requests');
 
-    if (cachedRequests.isEmpty) {
-      logger.v('No cached requests to process');
-      return true;
-    }
-
-    logger.d('Processing ${cachedRequests.length} cached requests');
-
-    for (final Map<String, dynamic> req in cachedRequests) {
-      final int id = req['id'];
-      final RequestType type =
-          RequestType.values.firstWhere((e) => e.toString() == req['type']);
-      final String endpoint = req['endpoint'];
-      final Map<String, dynamic> data = json.decode(req['data']);
-
-      // Add cacheDuration to endpoints that accept it
-      if (kEndpointsAcceptingCacheDuration.any((e) => endpoint.startsWith(e))) {
-        final int currentTime = DateTime.now().millisecondsSinceEpoch;
-        final int timestamp = req['timestamp'];
-        data['cacheDuration'] = currentTime - timestamp;
+      if (cachedRequests.isEmpty) {
+        logger.v('No cached requests to process');
+        return true;
       }
 
-      final response = await request(type, endpoint, data, false);
+      logger.d('Processing ${cachedRequests.length} cached requests');
 
-      logger.v(
-          'Cached request for $endpoint processed (status: ${response.requestStatus.name}) and removed from queue');
+      for (final Map<String, dynamic> req in cachedRequests) {
+        final int id = req['id'];
+        final RequestType type =
+            RequestType.values.firstWhere((e) => e.toString() == req['type']);
+        final String endpoint = req['endpoint'];
+        final Map<String, dynamic> data = json.decode(req['data']);
 
-      await CacheManager.instance.removeItem('requests', id);
-    }
-    return true;
+        // Add cacheDuration to endpoints that accept it
+        if (kEndpointsAcceptingCacheDuration
+            .any((e) => endpoint.startsWith(e))) {
+          final int currentTime = DateTime.now().millisecondsSinceEpoch;
+          final int timestamp = req['timestamp'];
+          data['cacheDuration'] = currentTime - timestamp;
+        }
+
+        final response = await request(type, endpoint, data, false);
+
+        logger.v(
+            'Cached request for $endpoint processed (status: ${response.requestStatus.name}) and removed from queue');
+
+        await CacheManager.instance.removeItem('requests', id);
+      }
+      return true;
+    });
   }
 
   /// Attempts to flush all cached events to the server
@@ -149,67 +157,79 @@ class RequestManager {
   /// Returns true if all events were successfully flushed, false if any failed
   /// or if the device is offline.
   Future<bool> flushCachedEvents() async {
-    final List<Map<String, dynamic>> cachedEvents =
-        await CacheManager.instance.getItems('events');
+    return _operationTracker.trackOperation(() async {
+      final List<Map<String, dynamic>> cachedEvents =
+          await CacheManager.instance.getItems('events');
 
-    if (cachedEvents.isEmpty) {
-      logger.v('No events to flush');
+      if (cachedEvents.isEmpty) {
+        logger.v('No events to flush');
+        return true;
+      }
+
+      // Check if we have internet connection before attempting to flush
+      if (!await ConnectionManager.instance.hasConnection()) {
+        logger.d('No internet connection, skipping flush');
+        return false;
+      }
+
+      logger.d(
+          'Flushing ${cachedEvents.length} cached events: ${cachedEvents.map((e) => e['name']).join(', ')}');
+
+      final int currentTime = DateTime.now().millisecondsSinceEpoch;
+      int processedCount = 0;
+
+      while (processedCount < cachedEvents.length) {
+        final List<Map<String, dynamic>> eventBatch = [];
+
+        final int endIndex =
+            (processedCount + kEventBatchSize < cachedEvents.length)
+                ? processedCount + kEventBatchSize
+                : cachedEvents.length;
+
+        final List<Map<String, dynamic>> currentBatch =
+            cachedEvents.sublist(processedCount, endIndex);
+
+        for (final Map<String, dynamic> event in currentBatch) {
+          final int timestamp = event['timestamp'];
+          final int cacheDuration = currentTime - timestamp;
+          eventBatch.add({
+            ...event,
+            'cacheDuration': cacheDuration,
+          });
+        }
+
+        await request(
+          RequestType.post,
+          'events',
+          {'events': eventBatch},
+          false,
+        );
+
+        for (final Map<String, dynamic> event in currentBatch) {
+          await CacheManager.instance.removeItem('events', event['id']);
+        }
+        processedCount += currentBatch.length;
+      }
+
+      logger.d('Finished flushing events');
       return true;
-    }
-
-    // Check if we have internet connection before attempting to flush
-    if (!await ConnectionManager.instance.hasConnection()) {
-      logger.d('No internet connection, skipping flush');
-      return false;
-    }
-
-    logger.d(
-        'Flushing ${cachedEvents.length} cached events: ${cachedEvents.map((e) => e['name']).join(', ')}');
-
-    final int currentTime = DateTime.now().millisecondsSinceEpoch;
-    int processedCount = 0;
-
-    while (processedCount < cachedEvents.length) {
-      final List<Map<String, dynamic>> eventBatch = [];
-
-      final int endIndex =
-          (processedCount + kEventBatchSize < cachedEvents.length)
-              ? processedCount + kEventBatchSize
-              : cachedEvents.length;
-
-      final List<Map<String, dynamic>> currentBatch =
-          cachedEvents.sublist(processedCount, endIndex);
-
-      for (final Map<String, dynamic> event in currentBatch) {
-        final int timestamp = event['timestamp'];
-        final int cacheDuration = currentTime - timestamp;
-        eventBatch.add({
-          ...event,
-          'cacheDuration': cacheDuration,
-        });
-      }
-
-      await request(
-        RequestType.post,
-        'events',
-        {'events': eventBatch},
-        false,
-      );
-
-      for (final Map<String, dynamic> event in currentBatch) {
-        await CacheManager.instance.removeItem('events', event['id']);
-      }
-      processedCount += currentBatch.length;
-    }
-
-    logger.d('Finished flushing events');
-    return true;
+    });
   }
 
+  /// Disposes resources used by RequestManager
   Future<void> dispose() async {
+    // If there are pending operations, wait for them to complete
+    if (_operationTracker.hasOperations) {
+      logger
+          .d('Waiting for pending operations to complete before disposing...');
+
+      // Wait for operations to complete with a timeout
+      await _operationTracker.waitForOperations();
+    }
+
     _stopPeriodicFlush();
     _client.close();
-    ConnectionManager.instance.dispose();
+    await ConnectionManager.instance.dispose();
   }
 
   /// Sends an HTTP request to the SuperFCM API.
@@ -228,34 +248,36 @@ class RequestManager {
     Map<String, dynamic> data = const {},
     bool cacheOnOffline = true,
   ]) async {
-    logger.v('Making ${type.name.toUpperCase()} request to $endpoint');
-    if (!await ConnectionManager.instance.hasConnection()) {
-      logger.d("Device is offline");
-      if (cacheOnOffline) {
-        logger.d("Caching request");
-        await _cacheRequest(type, endpoint, data);
-        return ApiResponse.cached(data);
-      } else {
-        logger.v("Request not cached due to cacheOnOffline=false");
-        return ApiResponse.networkError(
-            message: "Device offline and caching disabled");
+    return _operationTracker.trackOperation(() async {
+      logger.v('Making ${type.name.toUpperCase()} request to $endpoint');
+      if (!await ConnectionManager.instance.hasConnection()) {
+        logger.d("Device is offline");
+        if (cacheOnOffline) {
+          logger.d("Caching request");
+          await _cacheRequest(type, endpoint, data);
+          return ApiResponse.cached(data);
+        } else {
+          logger.v("Request not cached due to cacheOnOffline=false");
+          return ApiResponse.networkError(
+              message: "Device offline and caching disabled");
+        }
       }
-    }
-    try {
-      final ApiResponse? result = await _executeRequest(type, endpoint, data);
-      logger.v("Successfully executed request");
-      return result ??
-          ApiResponse.unknownError(
-              message: "Unknown error during request execution");
-    } catch (e) {
-      logger.e('Request failed: $e');
-      if (cacheOnOffline && _isNetworkError(e)) {
-        logger.d("Caching request due to network error: ${e.toString()}");
-        await _cacheRequest(type, endpoint, data);
-        return ApiResponse.cached(data);
+      try {
+        final ApiResponse? result = await _executeRequest(type, endpoint, data);
+        logger.v("Successfully executed request");
+        return result ??
+            ApiResponse.unknownError(
+                message: "Unknown error during request execution");
+      } catch (e) {
+        logger.e('Request failed: $e');
+        if (cacheOnOffline && _isNetworkError(e)) {
+          logger.d("Caching request due to network error: ${e.toString()}");
+          await _cacheRequest(type, endpoint, data);
+          return ApiResponse.cached(data);
+        }
+        return ApiResponse.networkError(message: e.toString());
       }
-      return ApiResponse.networkError(message: e.toString());
-    }
+    });
   }
 
   /// Executes the actual HTTP request.
