@@ -290,7 +290,7 @@ class SuperFCM {
   /// await SuperFCM.instance.linkExternalId('user_123');
   /// ```
   Future<bool> linkExternalId(String externalId) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("linkExternalId", () async {
       logger.i('Linking external ID: $externalId');
 
       if (subscription?.externalId == externalId) {
@@ -306,7 +306,7 @@ class SuperFCM {
         response,
         'link external ID',
         onSuccess: (response) {
-          subscription = Subscription.fromJson(response.data);
+          subscription = subscription!.copyWith(externalId: externalId);
           _storeSubscription();
         },
       );
@@ -335,7 +335,7 @@ class SuperFCM {
   /// });
   /// ```
   Future<bool> updateProperties(Map<String, dynamic> properties) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("updateProperties", () async {
       logger.d('Updating ${properties.length} properties');
       final response = await _patch(
           'subscriptions/${subscription?.id}',
@@ -383,7 +383,7 @@ class SuperFCM {
   /// await SuperFCM.instance.setProperty('isPremium', true);
   /// ```
   Future<bool> setProperty(String key, dynamic value) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("setProperty", () async {
       logger.i('Setting property: $key -> $value');
       if (subscription?.properties?[key] == value) {
         logger.v('Property $key already set to $value');
@@ -403,7 +403,7 @@ class SuperFCM {
   /// await SuperFCM.instance.deleteProperties(['temporary', 'oldFeature']);
   /// ```
   Future<bool> deleteProperties(List<String> properties) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("deleteProperties", () async {
       logger.d('Deleting properties: ${properties.join(', ')}');
       return await updateProperties(
         Map.fromEntries(properties.map((key) => MapEntry(key, null))),
@@ -423,7 +423,7 @@ class SuperFCM {
   /// await SuperFCM.instance.deleteProperty('temporary');
   /// ```
   Future<bool> deleteProperty(String property) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("deleteProperty", () async {
       logger.d('Deleting property: $property');
       if (!(subscription?.properties?.containsKey(property) ?? false)) {
         logger.v('Property $property does not exist');
@@ -447,7 +447,7 @@ class SuperFCM {
   /// await SuperFCM.instance.setTest(true);
   /// ```
   Future<bool> setTest(bool value) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("setTest", () async {
       logger.i('Setting test subscription status to: $value');
       if (subscription?.test == value) {
         logger.v('Test subscription status already set to $value');
@@ -486,7 +486,7 @@ class SuperFCM {
   /// );
   /// ```
   Future<bool> updatePermissionStatus(PermissionStatus status) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("updatePermissionStatus", () async {
       logger.d('Updating permission status to: $status');
       final response = await _patch(
           'subscriptions/${subscription?.id}',
@@ -518,7 +518,7 @@ class SuperFCM {
   /// await SuperFCM.instance.trackEvent('begin_checkout');
   /// ```
   Future<void> trackEvent(String name) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("trackEvent", () async {
       logger.i('Tracking event: $name');
       await CacheManager.instance.addItem("events", {
         'name': name,
@@ -545,7 +545,7 @@ class SuperFCM {
   /// await SuperFCM.instance.flushEvents();
   /// ```
   Future<bool> flushEvents() async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("flushEvents", () async {
       logger.d('Flushing cached events');
       bool result = await RequestManager.instance.flushCachedEvents();
       logger.d('Successfully flushed cached events');
@@ -745,7 +745,7 @@ class SuperFCM {
   /// Parameters:
   /// - [newToken]: The new FCM token to register
   Future<void> _handleTokenChange(String newToken) async {
-    await _queueOrExecute(() async {
+    await _queueOrExecute("_handleTokenChange", () async {
       if (subscription == null || subscription?.fcmToken == newToken) {
         logger.v('Token unchanged or no subscription exists');
         return;
@@ -778,9 +778,11 @@ class SuperFCM {
   /// - [operation]: The async operation to execute
   ///
   /// Returns a [Future] that completes when the operation is executed.
-  Future<T> _queueOrExecute<T>(Future<T> Function() operation) async {
+  Future<T> _queueOrExecute<T>(
+      String operationName, Future<T> Function() operation) async {
     if (!initialized) {
-      logger.w("SuperFCM not yet initialized, queuing operation");
+      logger.w(
+          "SuperFCM not yet initialized, queuing operation '$operationName'");
     }
 
     if (initialized && subscription != null) {
@@ -891,7 +893,7 @@ class SuperFCM {
   /// - [deliveryId]: The unique identifier of the delivery to update
   /// - [status]: The new status to set for the delivery
   Future<bool> _updateDeliveryStatus(String deliveryId, String status) async {
-    return _queueOrExecute(() async {
+    return _queueOrExecute("_updateDeliveryStatus", () async {
       logger.d('Updating delivery status: $deliveryId -> $status');
       final response = await _patch(
           'deliveries/$deliveryId',
