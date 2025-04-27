@@ -275,33 +275,6 @@ final config = SuperFCMConfig(
 SuperFCM.instance.initialize(config);
 ```
 
-## Advanced Usage
-
-### Topic Subscription
-
-SuperFCM supports topic-based messaging for broad audience targeting:
-
-```dart
-// Subscribe to a topic
-SuperFCM.instance.subscribeToTopic('news');
-
-// Unsubscribe from a topic
-SuperFCM.instance.unsubscribeFromTopic('news');
-```
-
-### Error Handling
-
-The SDK provides methods for error handling and debugging:
-
-```dart
-SuperFCM.instance.initialize(
-  // ...
-  onError: (error) {
-    print('SuperFCM error: $error');
-  }
-);
-```
-
 ## Support and Resources
 
 > **Note:** Additional resources are currently under construction. In the meantime, please refer to:
