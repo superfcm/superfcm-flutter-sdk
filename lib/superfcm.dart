@@ -753,13 +753,13 @@ class SuperFCM {
 
       logger.d('Updating FCM token: ${newToken.substring(0, 8)}...');
 
-      final ApiResponse response = await _patch(
+      await _patch(
         'subscriptions/${subscription?.id}',
         {'fcmToken': newToken},
         _config!.cacheOnOffline,
       );
 
-      subscription = Subscription.fromJson(response.data);
+      subscription = subscription!.copyWith(fcmToken: newToken);
       await _storeSubscription();
       logger.d('Successfully updated FCM token');
     });
