@@ -113,6 +113,7 @@ class RequestManager {
     }
 
     logger.d('Processing ${cachedRequests.length} cached requests');
+
     for (final Map<String, dynamic> req in cachedRequests) {
       final int id = req['id'];
       final RequestType type =
@@ -127,11 +128,11 @@ class RequestManager {
         data['cacheDuration'] = currentTime - timestamp;
       }
 
-      logger.v('Processing cached request: ${type.toString()} $endpoint');
+      final response = await request(type, endpoint, data, false);
 
-      await request(type, endpoint, data, false);
+      logger.v(
+          'Cached request for $endpoint processed (status: ${response.requestStatus.name}) and removed from queue');
 
-      logger.v('Request processed successfully, removing from queue');
       await CacheManager.instance.removeItem('requests', id);
     }
     return true;
