@@ -24,6 +24,10 @@ class FirebaseMessagingService {
 
   bool initialized = false;
 
+  // Track processed message IDs to prevent duplicate handling
+  final Set<String> _processedMessageIds = {};
+  String? _processingInitialMessageId;
+
   /// Factory constructor that returns the singleton instance
   factory FirebaseMessagingService() {
     return _instance;
@@ -79,6 +83,43 @@ class FirebaseMessagingService {
     initialized = true;
   }
 
+  /// Safely process a message that opened the app, preventing duplicate processing
+  Future<void> _safelyProcessOpenedMessage(RemoteMessage message) async {
+    final messageId = message.messageId;
+
+    // Skip if no messageId or already processed
+    if (messageId == null) {
+      logger.w('Received message without ID, processing anyway');
+    } else if (_processedMessageIds.contains(messageId) ||
+        _processingInitialMessageId == messageId) {
+      logger.d('Skipping duplicate message processing for ID: $messageId');
+      return;
+    }
+
+    logger.d('Processing message: ${message.messageId}');
+
+    if (messageId != null) {
+      _processingInitialMessageId ??= messageId;
+
+      try {
+        if (_onOpenedCallback != null) {
+          await _onOpenedCallback!(message);
+          // Only mark as processed after successful handling
+          _processedMessageIds.add(messageId);
+          logger.d('Successfully processed message: $messageId');
+        } else {
+          logger.w('No callback registered for opened message');
+        }
+      } catch (e) {
+        logger.e('Error processing message $messageId: $e');
+      } finally {
+        if (_processingInitialMessageId == messageId) {
+          _processingInitialMessageId = null;
+        }
+      }
+    }
+  }
+
   /// Sets up all the message handlers for different app states.
   ///
   /// This includes handlers for:
@@ -92,15 +133,20 @@ class FirebaseMessagingService {
 
     // Listen to messages when the app is opened from a terminated state
     FirebaseMessaging.instance.getInitialMessage().then((message) async {
-      if (message != null && _onOpenedCallback != null) {
-        await _onOpenedCallback!(message);
+      logger.d(
+          'Initial message check completed: ${message != null ? "Message found" : "No message"}');
+      if (message != null) {
+        logger.d('Processing initial message: ${message.messageId}');
+        await _safelyProcessOpenedMessage(message);
       }
     });
 
     // Listen to messages when the app is in the background but not terminated
     _openedAppSubscription =
-        FirebaseMessaging.onMessageOpenedApp.listen(_onOpenedCallback);
-
+        FirebaseMessaging.onMessageOpenedApp.listen((message) {
+      logger.d('onMessageOpenedApp fired with message: ${message.messageId}');
+      _safelyProcessOpenedMessage(message);
+    });
     // Register background message handler
     if (_onBackgroundCallback != null) {
       FirebaseMessaging.onBackgroundMessage(_onBackgroundCallback!);
@@ -200,6 +246,9 @@ class FirebaseMessagingService {
     _onForegroundCallback = null;
     _onOpenedCallback = null;
     _onTokenRefreshCallback = null;
+
+    _processedMessageIds.clear();
+    _processingInitialMessageId = null;
 
     logger.d('Firebase Messaging Service disposed');
   }
