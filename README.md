@@ -61,6 +61,32 @@ The SDK can initialize offline using previously cached subscription data. Any re
 
 ## Core Functionality
 
+### Session Tracking
+
+SuperFCM automatically tracks app sessions to help you understand user engagement patterns. Sessions are monitored based on app lifecycle events and configurable thresholds:
+
+```dart
+// Configure session behavior during initialization
+final config = SuperFCMConfig(
+  appId: 'your-superfcm-app-id',
+  // Enable automatic session tracking (default: true)
+  autoTrackSessions: true,
+  // Set inactivity threshold to consider a new session (default: 30 minutes)
+  sessionInactivityThreshold: Duration(minutes: 30),
+  // Set background threshold for a new session (default: 30 seconds)
+  sessionBackgroundThreshold: Duration(seconds: 30),
+);
+```
+
+You can also manually override the session count:
+
+```dart
+// Set the session count to a specific value
+await SuperFCM.instance.setSessionCount(5);
+```
+
+Session count is a valuable metric for segmenting your audience and targeting notifications based on user engagement levels.
+
 ### Event Tracking
 
 Events can be used to trigger notifications that you've configured in the [SuperFCM Dashboard](https://dashboard.superfcm.com).
