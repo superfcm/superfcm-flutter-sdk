@@ -59,6 +59,15 @@ const String kMessageStatusReceived = 'received';
 /// by the user to open the app
 const String kMessageStatusOpened = 'opened';
 
+/// Endpoints that accept cache duration parameter
+///
+/// These endpoints will have the cacheDuration field added to the request data
+/// when the request is processed after being cached
+const List<String> kEndpointsAcceptingCacheDuration = [
+  'deliveries',
+  'events',
+];
+
 /// Default log level
 ///
 /// Sets the minimum log level to display. Messages with levels below this

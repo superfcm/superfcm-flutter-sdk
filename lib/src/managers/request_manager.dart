@@ -120,9 +120,12 @@ class RequestManager {
       final String endpoint = req['endpoint'];
       final Map<String, dynamic> data = json.decode(req['data']);
 
-      final int currentTime = DateTime.now().millisecondsSinceEpoch;
-      final int timestamp = req['timestamp'];
-      data['cacheDuration'] = currentTime - timestamp;
+      // Add cacheDuration to endpoints that accept it
+      if (kEndpointsAcceptingCacheDuration.any((e) => endpoint.startsWith(e))) {
+        final int currentTime = DateTime.now().millisecondsSinceEpoch;
+        final int timestamp = req['timestamp'];
+        data['cacheDuration'] = currentTime - timestamp;
+      }
 
       logger.v('Processing cached request: ${type.toString()} $endpoint');
 
