@@ -155,7 +155,7 @@ class SuperFCM {
 
     logger.d('SuperFCM initialization complete');
 
-    await _getSubscriptionFromCache();
+    subscription = await _getSubscriptionFromCache(_prefs);
 
     if (subscription == null) {
       logger.d('No subscription found locally, registering new subscription');
@@ -205,23 +205,24 @@ class SuperFCM {
   ///
   /// Checks SharedPreferences for a cached subscription and deserializes it
   /// if found. Updates the [subscription] property if successful.
-  Future<void> _getSubscriptionFromCache() async {
+  static Future<Subscription?> _getSubscriptionFromCache(
+      Future<SharedPreferences> prefs) async {
     logger.v('Attempting to load subscription from cache');
-    final prefs = await _prefs;
-    final storedData = prefs.getString(kSubscriptionKey);
+    final storedData = (await prefs).getString(kSubscriptionKey);
     if (storedData != null && storedData.isNotEmpty) {
       try {
         Map<String, dynamic> data = json.decode(storedData);
         if (data.isNotEmpty) {
-          subscription = Subscription.fromJson(data);
+          final subscription = Subscription.fromJson(data);
           logger.d('Successfully loaded subscription from cache');
-          return;
+          return subscription;
         }
       } catch (e) {
         logger.e('Error loading subscription from cache: $e');
       }
     }
     logger.v('No subscription found in cache');
+    return null;
   }
 
   /// Saves the current subscription to local storage.
@@ -1033,17 +1034,17 @@ class SuperFCM {
         shouldCache,
       );
 
-  /// Background function processes messages when the app is in the background or terminated.
-  /// Since it runs in a separate isolate, it cannot access the main SuperFCM instance.
-  /// Instead, it directly caches delivery status updates to be processed when the app
-  /// becomes active again.
+  /// Processes messages received while the app is in the background or terminated.
+  /// This function attempts to make an immediate API request to update delivery status
+  /// rather than just caching it for later processing.
   ///
   /// The function:
   /// 1. Checks if the message contains a SuperFCM delivery ID
-  /// 2. Opens a direct connection to the cache database
-  /// 3. Creates a temporary CacheManager instance
-  /// 4. Caches the delivery status update for later processing
-  /// 5. Closes the database connection
+  /// 2. Retrieves the subscription from SharedPreferences to get the app ID
+  /// 3. If a valid subscription is found, initializes managers and attempts
+  ///    an immediate delivery status update
+  /// 4. If the immediate update fails or no subscription is found, falls back to
+  ///    direct database caching for later processing
   ///
   /// Parameters:
   /// - [message]: The Firebase RemoteMessage containing the notification data
@@ -1053,6 +1054,47 @@ class SuperFCM {
     // Check if this is a SuperFCM message
     if (message.data.containsKey(kDeliveryKey)) {
       final deliveryId = message.data[kDeliveryKey];
+
+      final prefs = SharedPreferences.getInstance();
+
+      // Try to load subscription from SharedPreferences to get the appId
+      final subscription = await _getSubscriptionFromCache(prefs);
+
+      if (subscription != null && subscription.appId != null) {
+        try {
+          // Create minimal configuration using the subscription's appId
+          final config = SuperFCMConfig(
+            appId: subscription.appId!,
+            cacheOnOffline: true,
+            logLevel: LogLevel.debug,
+          );
+
+          // Initialize required managers
+          await CacheManager.instance.initialize(config);
+          await RequestManager.instance.initialize(config);
+
+          // Attempt immediate delivery status update
+          // RequestManager will handle network connectivity and cache if offline
+          logger.d(
+              'Attempting immediate delivery status update for: $deliveryId');
+          await RequestManager.instance.request(
+            RequestType.patch,
+            'deliveries/$deliveryId',
+            {'status': kMessageStatusReceived},
+            true, // Enable caching as fallback
+          );
+
+          // Clean up resources
+          await RequestManager.instance.dispose();
+          await CacheManager.instance.dispose();
+          return;
+        } catch (e) {
+          logger.e('Error while attempting direct delivery status update: $e');
+          // Continue to fallback caching mechanism
+        }
+      }
+
+      // Fallback: Direct database caching if RequestManager approach wasn't possible
       Database? db;
 
       try {
@@ -1075,7 +1117,7 @@ class SuperFCM {
           'Background delivery status update cached for later processing: $deliveryId',
         );
       } catch (e) {
-        logger.e('Error in background message handler: $e');
+        logger.e('Error in background message handler fallback: $e');
       } finally {
         // Always close this dedicated connection
         await db?.close();
