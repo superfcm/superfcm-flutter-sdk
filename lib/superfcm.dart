@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:superfcm_flutter/src/managers/cache_manager.dart';
 import 'package:superfcm_flutter/src/managers/connection_manager.dart';
 import 'package:superfcm_flutter/src/managers/request_manager.dart';
+import 'package:superfcm_flutter/src/managers/session_manager.dart';
 import 'package:superfcm_flutter/src/models/api_response.dart';
 import 'package:superfcm_flutter/src/models/subscription.dart';
 import 'package:superfcm_flutter/src/services/firebase_messaging_service.dart';
@@ -134,6 +135,12 @@ class SuperFCM {
 
     logger.setLevel(config.logLevel);
 
+    // Initialize session manager
+    await SessionManager.instance.initialize(
+      config,
+      onSessionCountChanged: _handleSessionCountChanged,
+    );
+
     await CacheManager.instance.initialize(config);
     await RequestManager.instance.initialize(config);
     await FirebaseMessagingService.instance.initialize(
@@ -180,6 +187,7 @@ class SuperFCM {
     await RequestManager.instance.dispose();
     await CacheManager.instance.dispose();
     await FirebaseMessagingService.instance.dispose();
+    await SessionManager.instance.dispose();
 
     // Clear references
     _onForegroundCallback = null;
@@ -256,8 +264,14 @@ class SuperFCM {
         data,
         false,
       );
+
       if (response.httpStatus == HttpStatus.notFound) {
         logger.d('Subscription not found, creating new subscription');
+
+        // We don't set sessionCount at all for new subscriptions
+        // This allows SessionManager to be the single source of truth for session tracking
+        // If auto tracking is enabled, SessionManager will handle the first increment
+
         response = await _post('subscriptions', data, false);
       }
 
@@ -762,6 +776,77 @@ class SuperFCM {
       subscription = subscription!.copyWith(fcmToken: newToken);
       await _storeSubscription();
       logger.d('Successfully updated FCM token');
+    });
+  }
+
+  //
+  // SESSION MANAGEMENT
+  //
+
+  /// Manually sets the session count to a specific value.
+  ///
+  /// This method can be used to override the automatic session tracking
+  /// or to set the count to a specific value from another source.
+  ///
+  /// Parameters:
+  /// - [count]: The new session count value to set
+  ///
+  /// Returns true if the update was successful, false otherwise.
+  ///
+  /// Example:
+  /// ```dart
+  /// // Reset the session count
+  /// await SuperFCM.instance.setSessionCount(0);
+  /// ```
+  Future<bool> setSessionCount(int count) async {
+    return _queueOrExecute("setSessionCount", () async {
+      logger.i('Manually setting session count to $count');
+
+      final response = await _patch(
+        'subscriptions/${subscription!.id}',
+        {
+          'sessionCount': count,
+        },
+        _config!.cacheOnOffline,
+      );
+
+      return _handleResponse(
+        response,
+        'update session count',
+        onSuccess: (response) {
+          subscription = subscription!.copyWith(sessionCount: count);
+          _storeSubscription();
+        },
+      );
+    });
+  }
+
+  /// Handles session count changes from the SessionManager.
+  ///
+  /// This is called when the SessionManager detects a new session based on
+  /// app lifecycle events. It increments the server's session count by 1.
+  Future<bool> _handleSessionCountChanged() async {
+    return _queueOrExecute("_handleSessionCountChanged", () async {
+      final currentCount = subscription!.sessionCount ?? 0;
+      final newCount = currentCount + 1;
+
+      logger.d('Incrementing session count from $currentCount to $newCount');
+      final response = await _patch(
+        'subscriptions/${subscription!.id}',
+        {
+          'sessionCount': newCount,
+        },
+        _config!.cacheOnOffline,
+      );
+
+      return _handleResponse(
+        response,
+        'update session count from app lifecycle change',
+        onSuccess: (response) {
+          subscription = subscription!.copyWith(sessionCount: newCount);
+          _storeSubscription();
+        },
+      );
     });
   }
 

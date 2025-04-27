@@ -20,6 +20,16 @@ const Duration kRequestTimeout = Duration(seconds: 5);
 /// This key is used to persist subscription information across app restarts
 const String kSubscriptionKey = 'superfcm_subscription';
 
+/// Session count storage key
+///
+/// This key is used to persist the session count across app restarts
+const String kSessionCountKey = 'superfcm_session_count';
+
+/// Last active timestamp storage key
+///
+/// This key is used to persist the timestamp of when the app was last active
+const String kLastActiveTimestampKey = 'superfcm_last_active_timestamp';
+
 /// Cache database name
 ///
 /// This database is used to store requests and events when offline

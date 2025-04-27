@@ -31,6 +31,9 @@ class Subscription {
   /// The most recent date when this device connected to SuperFCM.
   final DateTime? dateLastSeen;
 
+  /// The number of sessions this device has had with SuperFCM.
+  final int? sessionCount;
+
   /// The build number of the app installed on the device.
   final int? buildNumber;
 
@@ -81,6 +84,7 @@ class Subscription {
     this.id,
     this.dateFirstSeen,
     this.dateLastSeen,
+    this.sessionCount,
     this.buildNumber,
     this.version,
     this.country,
@@ -115,6 +119,7 @@ class Subscription {
     String? id,
     DateTime? dateFirstSeen,
     DateTime? dateLastSeen,
+    int? sessionCount,
     int? buildNumber,
     String? version,
     String? country,
@@ -135,6 +140,7 @@ class Subscription {
       dateFirstSeen: dateFirstSeen ?? this.dateFirstSeen,
       dateLastSeen: dateLastSeen ?? this.dateLastSeen,
       buildNumber: buildNumber ?? this.buildNumber,
+      sessionCount: sessionCount ?? this.sessionCount,
       version: version ?? this.version,
       country: country ?? this.country,
       deviceManufacturer: deviceManufacturer ?? this.deviceManufacturer,

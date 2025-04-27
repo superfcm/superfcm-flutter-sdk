@@ -14,6 +14,7 @@ Subscription _$SubscriptionFromJson(Map<String, dynamic> json) => Subscription(
       dateLastSeen: json['dateLastSeen'] == null
           ? null
           : DateTime.parse(json['dateLastSeen'] as String),
+      sessionCount: (json['sessionCount'] as num?)?.toInt(),
       buildNumber: (json['buildNumber'] as num?)?.toInt(),
       version: json['version'] as String?,
       country: json['country'] as String?,
@@ -36,6 +37,7 @@ Map<String, dynamic> _$SubscriptionToJson(Subscription instance) =>
       'id': instance.id,
       'dateFirstSeen': instance.dateFirstSeen?.toIso8601String(),
       'dateLastSeen': instance.dateLastSeen?.toIso8601String(),
+      'sessionCount': instance.sessionCount,
       'buildNumber': instance.buildNumber,
       'version': instance.version,
       'country': instance.country,

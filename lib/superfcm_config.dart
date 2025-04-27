@@ -33,11 +33,35 @@ class SuperFCMConfig {
   /// Defaults to Level.info.
   final LogLevel logLevel;
 
+  /// Whether to automatically track and update session counts.
+  ///
+  /// When enabled, the SDK will automatically track app sessions and
+  /// update the sessionCount property on the server.
+  /// Defaults to true.
+  final bool autoTrackSessions;
+
+  /// The minimum time the app must be in the background to count as a new session.
+  ///
+  /// When the app returns to the foreground after being in the background for at least
+  /// this duration, the session count will be incremented.
+  /// Defaults to 30 seconds.
+  final Duration sessionBackgroundThreshold;
+
+  /// The maximum time of user inactivity before starting a new session.
+  ///
+  /// If the app remains in the foreground but no activity is detected for this duration,
+  /// a new session will be started when activity resumes.
+  /// Defaults to 30 minutes.
+  final Duration sessionInactivityThreshold;
+
   const SuperFCMConfig({
     required this.appId,
     this.shouldMonitorTokenChange = true,
     this.cacheOnOffline = true,
     this.maxCacheDuration,
     this.logLevel = LogLevel.info,
+    this.autoTrackSessions = true,
+    this.sessionBackgroundThreshold = const Duration(seconds: 30),
+    this.sessionInactivityThreshold = const Duration(minutes: 30),
   });
 }
