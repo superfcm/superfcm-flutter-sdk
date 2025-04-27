@@ -91,7 +91,7 @@ class FirebaseMessagingService {
         FirebaseMessaging.onMessage.listen(_onForegroundCallback);
 
     // Listen to messages when the app is opened from a terminated state
-    await FirebaseMessaging.instance.getInitialMessage().then((message) async {
+    FirebaseMessaging.instance.getInitialMessage().then((message) async {
       if (message != null && _onOpenedCallback != null) {
         await _onOpenedCallback!(message);
       }
