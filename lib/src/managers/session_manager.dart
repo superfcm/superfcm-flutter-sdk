@@ -23,7 +23,6 @@ class SessionManager {
   DateTime? _lastActiveTimestamp;
   bool _isInBackground = false;
   bool _isInitialized = false;
-  bool _isNewSession = false; // Track if this qualifies as a new session
 
   // App lifecycle observer
   AppLifecycleObserver? _lifecycleObserver;
