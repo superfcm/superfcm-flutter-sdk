@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1
+
+### Updated
+
+- Bumped `permission_handler` dependency.
+- Minor README and code formatting adjustments (no functional changes).
+
 ## 0.1.0
 
 ### Added
