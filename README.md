@@ -306,4 +306,5 @@ SuperFCM.instance.initialize(config);
 > **Note:** Additional resources are currently under construction. In the meantime, please refer to:
 
 - [GitHub Issues](https://github.com/superfcm/superfcm-flutter-sdk/issues)
+- [SuperFCM Docs](https://docs.superfcm.com)
 - Contact us at [info@superfcm.com](mailto:info@superfcm.com)
