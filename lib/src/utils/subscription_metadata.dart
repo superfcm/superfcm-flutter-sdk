@@ -45,7 +45,7 @@ class SubscriptionMetadata {
   static Future<Map<String, dynamic>> _getLocationData() async {
     try {
       final GeoData? geoData = await IpApi.getData(fields: ['countryCode']);
-      String timezone = await FlutterTimezone.getLocalTimezone();
+      String timezone = (await FlutterTimezone.getLocalTimezone()).identifier;
       return {
         'timezone': timezone,
         if (geoData?.countryCode != null) 'country': geoData!.countryCode,
